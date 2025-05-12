@@ -20,7 +20,13 @@ library(here)
 
 # Get the data
 
-```{r}
+This network is a directed and unweighted social communication network, which represents the exchange of emails among members of the Rovira i Virgili University in Spain, in 2003.
+
+Source: [Netzschleuder](https://networks.skewed.de/net/uni_email).
+
+### Nodes and links
+
+```{r, message=FALSE, warning=FALSE}
 nodes <- read_csv(here("network_data", "nodes.csv"))
 links <- read_csv(here("network_data", "edges.csv"))
 ```
@@ -29,6 +35,11 @@ links <- read_csv(here("network_data", "edges.csv"))
 head(nodes)
 head(links)
 ```
+
+Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes,
+the column `name` is the one indicating their corresponding name (although already anonymised), and the `_pos` column represents the coordinates of each node in a 2D space, typically used for visualization or layout in graph-related tasks. In the `links` dataframe, the column `# source` and `target` indicate the 2
+nodes forming a link
+
 ### Graph:
 
 ```{r}
