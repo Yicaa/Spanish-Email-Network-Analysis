@@ -43,6 +43,6 @@ nodes forming a link
 ### Graph:
 
 ```{r}
-graph <- graph_from_data_frame(links, directed = FALSE, vertices = nodes)
+graph <- graph_from_data_frame(links, directed = TRUE, vertices = nodes)
 graph
 ```
