@@ -20,16 +20,20 @@ library(here)
 
 # Get the data
 
-This network is a directed and unweighted social communication network, which represents the exchange of emails among members of the Rovira i Virgili University in Spain, in 2003.
-
-Source: [Netzschleuder](https://networks.skewed.de/net/uni_email).
-
-### Nodes and links
-
 ```{r, message=FALSE, warning=FALSE}
 nodes <- read_csv(here("network_data", "nodes.csv"))
 links <- read_csv(here("network_data", "edges.csv"))
 ```
+
+# Description of the dataset
+
+This network is a directed and unweighted social communication network, which represents the exchange of emails among members of the Rovira i Virgili University in Spain, in 2003.
+
+Source: [Netzschleuder](https://networks.skewed.de/net/uni_email).
+
+### Properties
+
+### Nodes and links
 
 ```{r}
 head(nodes)
@@ -46,3 +50,37 @@ nodes forming a link
 graph <- graph_from_data_frame(links, directed = TRUE, vertices = nodes)
 graph
 ```
+
+# Questions
+
+## 1) Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
+
+```{r}
+
+```
+
+
+## 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
+
+```{r}
+
+```
+
+## 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
+
+```{r}
+
+```
+
+## 4) Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
+
+```{r}
+
+```
+
+## 5) Comment on potential ways to improve the link prediction
+
+```{r}
+
+```
+
