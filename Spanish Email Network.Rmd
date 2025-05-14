@@ -33,6 +33,8 @@ Source: [Netzschleuder](https://networks.skewed.de/net/uni_email).
 
 ### Properties
 
+Directed, unweighted, social communication network.
+
 ### Nodes and links
 
 ```{r}
@@ -56,7 +58,65 @@ graph
 ## 1) Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
 
 ```{r}
+# Set seed for reproducibility
+set.seed(123)
 
+# Randomly delete some real edges: set as positive class
+edge_list <- as_data_frame(graph, what = "edges")
+n_edges <- nrow(edge_list)
+n_remove <- floor(0.1 * n_edges) #We will delete 10% of the real edges
+removed_edges <- edge_list[sample(1:n_edges, n_remove), ]
+graph_modified <- delete_edges(graph, E(graph)[from = removed_edges$from, to = removed_edges$to])
+
+# Label the deleted real edges as positive class (1)
+positive_edges <- removed_edges %>%
+  mutate(label = 1)
+```
+
+```{r}
+# Create a new data frame to register the negative class (made-up links)
+false_edges <- data.frame()
+# Filter the most connected nodes to create non-existent links 
+#that are less obviously disconnected, which is better for machine learning
+most_connected <- which(degree(graph)>10)
+# Set seed again just in case
+set.seed(123)
+
+# Create a loop for creating made-up links, registering all in `false_edges`
+while (nrow(false_edges) < n_remove) {
+  node1 <- sample(most_connected, 1)
+  node2 <- sample(most_connected, 1)
+  
+  # avoid self-connecting
+  if (node1 == node2) next
+  
+  # Check if two nodes are connected, if not, create a negative link for them
+  if (!are.connected(graph, node1, node2)) {
+    edge_row <- data.frame(from = as_ids(V(graph)[node1]), 
+                           to = as_ids(V(graph)[node2]),
+                           label = 0)
+    
+    # avoid adding same links
+    if (!any(apply(false_edges, 1, function(row) all(row == edge_row)))) {
+      false_edges <- rbind(false_edges, edge_row)
+    }
+  }
+}
+
+```
+
+```{r}
+# Uniform the format of tables before binding
+positive_edges <- positive_edges %>%
+  mutate(from = as.character(from), to = as.character(to))
+
+false_edges <- false_edges %>%
+  mutate(from = as.character(from), to = as.character(to))
+
+# Bind the positive and negative edges
+all_edges <- bind_rows(positive_edges, false_edges)
+head(all_edges)
+table(all_edges$label)
 ```
 
 
