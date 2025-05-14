@@ -108,10 +108,10 @@ while (nrow(false_edges) < n_remove) {
 ```{r}
 # Uniform the format of tables before binding
 positive_edges <- positive_edges %>%
-  mutate(from = as.character(from), to = as.character(to))
+  mutate(from = as.numeric(from), to = as.numeric(to))
 
 false_edges <- false_edges %>%
-  mutate(from = as.character(from), to = as.character(to))
+  mutate(from = as.numeric(from), to = as.numeric(to))
 
 # Bind the positive and negative edges
 all_edges <- bind_rows(positive_edges, false_edges)
@@ -123,8 +123,62 @@ table(all_edges$label)
 ## 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
 
 ```{r}
+# Make sure the IDs are in numeric format, aligning with igraph
+all_edges <- all_edges %>%
+  mutate(from = as.numeric(from),
+         to = as.numeric(to))
+```
+
+```{r}
+# Create a function to compute different proximity/similarity metrics heuristics
+# as additional features for later predictions
+compute_heuristics <- function(graph, edge_df) {
+  edge_df <- edge_df %>%
+    mutate(
+      # Calculate common neighbors using the neighbors function
+      common_neighbors = map2_int(from, to, ~ 
+        length(intersect(neighbors(graph, .x, mode = "all"), 
+                         neighbors(graph, .y, mode = "all")))),
+      
+      # Calculate Jaccard coefficient
+      # We don't use the similarity.jaccard function as it's difficult to handle a matrix
+      jaccard = map2_dbl(from, to, ~ {
+        nei_x <- neighbors(graph, .x, mode = "all")
+        nei_y <- neighbors(graph, .y, mode = "all")
+        length(intersect(nei_x, nei_y)) / length(union(nei_x, nei_y))
+      }),
+
+      # Calculate Adamic-Adar metric
+      # We don't use the similarity.invlogweighted function as it's difficult to handle a matrix
+      adamic_adar = map2_dbl(from, to, ~ {
+        nei_common <- intersect(neighbors(graph, .x, mode = "all"), 
+                                neighbors(graph, .y, mode = "all"))
+        if (length(nei_common) == 0) return(0)
+        degrees <- degree(graph, nei_common, mode = "all")
+        sum(1 / log(degrees))
+      }),
+      
+      # Calculate preferential attachment by multiplay the degrees
+      pref_attachment = map2_dbl(from, to, ~ 
+        degree(graph, .x, mode = "all") * degree(graph, .y, mode = "all")),
+
+      # Calculate the distances by using the distances function
+      shortest_path = map2_dbl(from, to, ~ 
+        distances(graph, v = .x, to = .y, mode = "all"))
+    )
+  return(edge_df)
+}
 
 ```
+
+```{r}
+# Apply the created function and compute all proximity/similarity metrics heuristics
+# that we learned in class
+all_edges_with_heuristics <- compute_heuristics(graph, all_edges)
+head(all_edges_with_heuristics)
+```
+
+
 
 ## 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
 
