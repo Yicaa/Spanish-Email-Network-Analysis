@@ -16,6 +16,7 @@ library(visNetwork)
 library(tidygraph)
 library(ggraph)
 library(here)
+library(caret)
 ```
 
 # Get the data
@@ -42,9 +43,7 @@ head(nodes)
 head(links)
 ```
 
-Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes,
-the column `name` is the one indicating their corresponding name (although already anonymised), and the `_pos` column represents the coordinates of each node in a 2D space, typically used for visualization or layout in graph-related tasks. In the `links` dataframe, the column `# source` and `target` indicate the 2
-nodes forming a link
+Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes, the column `name` is the one indicating their corresponding name (although already anonymised), and the `_pos` column represents the coordinates of each node in a 2D space, typically used for visualization or layout in graph-related tasks. In the `links` dataframe, the column `# source` and `target` indicate the 2 nodes forming a link
 
 ### Graph:
 
@@ -78,7 +77,7 @@ positive_edges <- removed_edges %>%
 false_edges <- data.frame()
 # Filter the most connected nodes to create non-existent links 
 #that are less obviously disconnected, which is better for machine learning
-most_connected <- which(degree(graph)>10)
+most_connected <- which(degree(graph)>5)
 # Set seed again just in case
 set.seed(123)
 
@@ -119,7 +118,6 @@ head(all_edges)
 table(all_edges$label)
 ```
 
-
 ## 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
 
 ```{r}
@@ -131,7 +129,7 @@ all_edges <- all_edges %>%
 
 ```{r}
 # Create a function to compute different proximity/similarity metrics heuristics
-# as additional features for later predictions
+# as additional features for later prediction models
 compute_heuristics <- function(graph, edge_df) {
   edge_df <- edge_df %>%
     mutate(
@@ -178,13 +176,52 @@ all_edges_with_heuristics <- compute_heuristics(graph, all_edges)
 head(all_edges_with_heuristics)
 ```
 
-
-
 ## 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
 
 ```{r}
-
+# Create training (80%) and test set (20%)
+set.seed(123)  # Set the seed for reproducibility
+train_indices <- sample(1:nrow(all_edges_with_heuristics), size = 0.8 * nrow(all_edges_with_heuristics))
+train_edges <- all_edges_with_heuristics[train_indices, ]
+test_edges <- all_edges_with_heuristics[-train_indices, ]
 ```
+
+```{r}
+# Convert the labels into factors, for the logit model
+train_edges$label <- as.factor(train_edges$label)
+```
+
+
+```{r}
+# Build logit model using binomial family from glm to predict if a link exists (1) or not (0)
+# Using different proximity/similarity metrics heuristics created previously as features in the glm
+# Use cross validation to test the performance
+train_control <- trainControl(method = "cv", number = 10)
+model_cv <- train(label ~ common_neighbors + jaccard + adamic_adar + pref_attachment + shortest_path,
+                  data = train_edges, method = "glm", family = binomial, trControl = train_control)
+summary(model_cv)
+```
+
+We received a warning saying that "glm.fit algorithm did not converge", and the p value for all coefficients are close to 1, meaning that this model has very much room for improvement.
+
+Firstly, we will check if there is the problem of multi-collinearity, and see if the number of positive and negative labels is balanced.
+
+```{r}
+cor(train_edges[, c("common_neighbors", "jaccard", "adamic_adar", "pref_attachment", "shortest_path")])
+table(train_edges$label)
+```
+
+We can see that there are 861 negative labels and 883 positive labels, which is pretty balanced. However, we can see the correlation between `common_neighbors` and `adamic_adar` is extremely high (0.99), indicating redundancy. `common_neighbors` and `jaccard` are also strongly correlated (0.82), while `shortest_path` shows low correlation with others, suggesting it's more independent. We will try to drop highly correlated features (`common_neighbors`) to mitigate multicollinearity.
+
+```{r}
+train_control <- trainControl(method = "cv", number = 10)
+model_cv <- train(label ~ jaccard + pref_attachment + shortest_path,
+                  data = train_edges, method = "glm", family = binomial, trControl = train_control)
+summary(model_cv)
+```
+
+
+
 
 ## 4) Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
 
@@ -197,4 +234,3 @@ head(all_edges_with_heuristics)
 ```{r}
 
 ```
-
