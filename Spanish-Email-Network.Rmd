@@ -1,18 +1,25 @@
 ---
-title: "Spanish Email Network"
+title: "University Email Network"
 author: "Yijia Lin, Bradley McKenzie and Diego Paroli"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  rmdformats::html_clean:
+    lightbox: false
+    thumbnails: false
 ---
 
-# Libraries
+```{r,include=F}
+knitr::opts_chunk$set(cache=T,message=FALSE,warning=FALSE)
+options(scipen=700)
+```
+
+
+## Libraries
 
 ```{r, message=FALSE, warning=FALSE}
 rm(list = ls())
 library(tidyverse)
-library(httr2)
 library(igraph)
-library(visNetwork)
 library(tidygraph)
 library(ggraph)
 library(ggthemes)
@@ -20,42 +27,42 @@ library(here)
 library(caret)
 ```
 
-# Get the data
+## Read the data
 
 ```{r, message=FALSE, warning=FALSE}
 nodes <- read_csv(here("network_data", "nodes.csv"))
 links <- read_csv(here("network_data", "edges.csv"))
 ```
 
-# Description of the dataset
+## Description of the dataset
 
 This network is a directed and unweighted social communication network, which represents the exchange of emails among members of the Rovira i Virgili University in Spain, in 2003.
 
 Source: [Netzschleuder](https://networks.skewed.de/net/uni_email).
 
-### Properties
+#### Properties
 
 Directed, unweighted, social communication network.
 
-### Nodes and links
+#### Nodes and links
 
 ```{r}
 head(nodes)
 head(links)
 ```
 
-Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes, what we are interested in, the column `name` would contain the corresponding name of each node, but they have been anonymized for privacy reason so this column is still a series of numbers. The `_pos` column represents the coordinates of each node in a 2D space, used for visualization or layout in graph-related tasks. 
+Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes, the column `name` would contain the corresponding name of each node, but they have been anonymized for privacy reason so this column is still a series of numbers. The `_pos` column represents the coordinates of each node in a 2D space, used for visualization or layout in graph-related tasks. 
 
 In the `links` dataframe, the column `# source` and `target` indicate the indexes of the 2 nodes forming a link.
 
-### Graph:
+#### Graph
 
 ```{r}
 graph <- graph_from_data_frame(links, directed = TRUE, vertices = nodes)
 graph
 ```
 
-# Initial graph exploration
+## Initial graph exploration
 
 To understand the graph, we can plot the degree distribution to check whether we have the expected power-law distribution or another type. This will help to interpret the findings later when we remove links.
 
@@ -88,13 +95,12 @@ paste0("The average degree is: ", round(sum(degree_out)/vcount(graph), 2), " whe
 
 # most connected node:
 paste0("The most connected node is number ", which.max(degree(graph))[1], " which has ", max(degree(graph)), " links.")
-
 ```
 For the purposes of this homework, we are not factoring in this directional property of the graph. We are considering that the emails are indicating a social relationship between the two nodes (sender and receiver) and it is irrelevant who sent the email. This means the average interactions for each individual node is 19.24 (which would represent email interactions with 19.24 different people on average)
 
 Now check the degree distribution
 
-```{r}
+```{r, fig.width=8}
 # set average node for label 
 avg_deg <- round(mean(degree(graph)),2)
 
@@ -109,11 +115,11 @@ ggplot() +
   theme(axis.title.y = element_text(angle = 90))
 ```
 
-We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with it's 142 links. This is far more than the second most connected
+We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with its 142 links. This is far more than the second most connected
 
 Visualization of the network:
 
-```{r}
+```{r, fig.width=8}
 # plot the network overall, see if any large clusters emerge. Use the curved lines as it looks nice to represent emails. 
 # set colour and size only for the top 50 nodes
 top_50_nodes <- order(degree_all, decreasing = TRUE)[1:50]
@@ -134,11 +140,11 @@ ggraph(graph, layout = "kk") +
 We see that the most connected nodes are all centered in the graph. On the outside, we can see the nodes with only a couple of connections.
 
 
-# Questions
+## Steps
 
-## 1) Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
+### 1) Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
 
-First we'll create the positive class: existing edges that were removed from the network.
+First we'll create the positive class: existing edges that are removed from the network.
 
 ```{r}
 # Set seed for reproducibility
@@ -207,9 +213,9 @@ head(all_edges)
 table(all_edges$label)
 ```
 
-## 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
+### 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
 
-We'll Create a function to compute different proximity/similarity metrics heuristics to be used as features in the prediction model later.
+We'll create a function to compute different proximity/similarity metrics heuristics to be used as features in the prediction model later.
 
 ```{r}
 compute_heuristics <- function(graph, edge_df) {
@@ -253,7 +259,7 @@ all_edges_with_heuristics <- compute_heuristics(graph, all_edges)
 head(all_edges_with_heuristics)
 ```
 
-## 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
+### 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
 
 First we split in test and training datasets:
 
@@ -291,7 +297,7 @@ head(predictions)
 ```
 
 
-## 4) Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
+### 4) Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
 
 Let's first look at the summary of the model.
 
@@ -331,7 +337,7 @@ confusion_matrix
 
 Overall accuracy is 78%, specificity is higher (89%), while sensitivity is lower (67%). This means, as can be seen from the confusion matrix, that the model is better at identifying negative links (those that never existed), than positive links (those that were actually present). The model often labels as non-existent link, links that actually were there.
 
-## 5) Comment on potential ways to improve the link prediction
+### 5) Comment on potential ways to improve the link prediction
 
 ```{r}
 
