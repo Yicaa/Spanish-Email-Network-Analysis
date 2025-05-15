@@ -15,6 +15,7 @@ library(igraph)
 library(visNetwork)
 library(tidygraph)
 library(ggraph)
+library(ggthemes)
 library(here)
 library(caret)
 ```
@@ -51,6 +52,85 @@ Within the `nodes` dataframe, the column `# index` is the one indicating the ind
 graph <- graph_from_data_frame(links, directed = TRUE, vertices = nodes)
 graph
 ```
+
+# Initial graph exploration
+
+To understand the graph, we can plot the degree distribution to check whether we have the expected power-law distribution or another type. This will help to interpret the findings later when we remove links.
+
+First, we check for any loops, these would be emails sent to self. And if so, we can simplify the graph to remove these. 
+
+```{r}
+paste0("The number of recursive (self-directed) emails in the network is: ", 
+       ecount(graph) - ecount(simplify(graph)))
+
+# we see that one exists, so we simplify the graph to remove it. 
+graph <- simplify(graph)
+# check our graph is setup properly
+is_igraph(graph)
+```
+
+Next, calculate basic descriptive statistics of the plot
+```{r}
+paste0("There are ", vcount(graph), " nodes and ", ecount(graph), " edges in our Spanish email network")
+
+degree_all <- degree(graph, mode="all")
+degree_out <- degree(graph, mode="out")
+
+paste0("The average degree is: ", round(mean(degree(graph)), 2), " when we DO NOT consider the direction of the emails.")
+
+paste0("The average degree is: ", round(sum(degree_out)/vcount(graph), 2), " when we DO consider the emails to be directed outward from the node (sender) to a recipient")
+
+# most connected node:
+paste0("The most connected node is number ", which.max(degree(graph))[1], " which has ", max(degree(graph)), " links.")
+
+```
+For the purposes of this homework, we are not factoring in this directional property of the graph. We are considering that the emails are indicating a social relationship between the two nodes (sender and receiver) and it is irrelevant who sent the email. This means the average interactions for each individual node is 19.24 (which would represent email interactions 19.24 different people on average)
+
+Now check the degree distribution
+
+```{r}
+# set average node for label 
+avg_deg <- round(mean(degree(graph)),2)
+
+# plot linear distribution
+ggplot() + 
+  geom_histogram(aes(x = degree_all), bins=40) + 
+  geom_vline(aes(xintercept = avg_deg, colour = "red"), show.legend = FALSE) +
+  annotate("text", x = avg_deg+5, y = 160, label = paste0("Avg deg = ", avg_deg), angle = 90, color = "red") + 
+  labs(title = "Degree distribution histogram for Uni emails",
+       x = "Degrees",
+       y = "Number of nodes") +
+  theme(axis.title.y = element_text(angle = 90))
+
+```
+
+We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with it's 142 links. This is far more than the second most connected
+
+Plot the network to see if any trends are visible
+-- FYI Yijia and Diego, just adding these in but probably not useful
+
+```{r}
+# plot the network overall, see if any large clusters emerge. Use the curved lines as it looks nice to represent emails. 
+# set colour and size only for the top 50 nodes
+top_50_nodes <- order(degree_all, decreasing = TRUE)[1:50]
+V(graph)$color <- "grey3"
+V(graph)[top_50_nodes]$color <- "red3"
+V(graph)$size <- 0.5  
+V(graph)[top_50_nodes]$size <- 0.7
+
+# plot the full network
+ggraph(graph, layout = "lgl") +
+  geom_edge_arc(aes(alpha = 0.5), color = "gray70") +  
+  geom_node_point(aes(size = V(graph)$size), 
+                  color = V(graph)$color) +  
+  theme_void() +  
+  ggtitle("Visualisation of full network, 50 most connected nodes highlighted")+
+  theme(legend.position = "none")
+
+```
+
+We see that the most connected nodes are all centred in the graph. On the outside, we can see the plots with only a couple of connections. This is consistent with the power-law distribution. 
+
 
 # Questions
 
