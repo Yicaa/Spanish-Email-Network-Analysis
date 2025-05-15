@@ -1,18 +1,25 @@
 ---
-title: "Spanish Email Network"
+title: "University Email Network"
 author: "Yijia Lin, Bradley McKenzie and Diego Paroli"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  rmdformats::html_clean:
+    lightbox: false
+    thumbnails: false
 ---
 
-# Libraries
+```{r,include=F}
+knitr::opts_chunk$set(cache=T,message=FALSE,warning=FALSE)
+options(scipen=700)
+```
+
+
+## Libraries
 
 ```{r, message=FALSE, warning=FALSE}
 rm(list = ls())
 library(tidyverse)
-library(httr2)
 library(igraph)
-library(visNetwork)
 library(tidygraph)
 library(ggraph)
 library(ggthemes)
@@ -20,44 +27,46 @@ library(here)
 library(caret)
 ```
 
-# Get the data
+## Read the data
 
 ```{r, message=FALSE, warning=FALSE}
 nodes <- read_csv(here("network_data", "nodes.csv"))
 links <- read_csv(here("network_data", "edges.csv"))
 ```
 
-# Description of the dataset
+## Description of the dataset
 
 This network is a directed and unweighted social communication network, which represents the exchange of emails among members of the Rovira i Virgili University in Spain, in 2003.
 
 Source: [Netzschleuder](https://networks.skewed.de/net/uni_email).
 
-### Properties
+#### Properties
 
 Directed, unweighted, social communication network.
 
-### Nodes and links
+#### Nodes and links
 
 ```{r}
 head(nodes)
 head(links)
 ```
 
-Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes, the column `name` is the one indicating their corresponding name (although already anonymised), and the `_pos` column represents the coordinates of each node in a 2D space, typically used for visualization or layout in graph-related tasks. In the `links` dataframe, the column `# source` and `target` indicate the 2 nodes forming a link
+Within the `nodes` dataframe, the column `# index` is the one indicating the index of the nodes, the column `name` would contain the corresponding name of each node, but they have been anonymized for privacy reason so this column is still a series of numbers. The `_pos` column represents the coordinates of each node in a 2D space, used for visualization or layout in graph-related tasks. 
 
-### Graph:
+In the `links` dataframe, the column `# source` and `target` indicate the indexes of the 2 nodes forming a link.
+
+#### Graph
 
 ```{r}
 graph <- graph_from_data_frame(links, directed = TRUE, vertices = nodes)
 graph
 ```
 
-# Initial graph exploration
+## Initial graph exploration
 
 To understand the graph, we can plot the degree distribution to check whether we have the expected power-law distribution or another type. This will help to interpret the findings later when we remove links.
 
-First, we check for any loops, these would be emails sent to self. And if so, we can simplify the graph to remove these. 
+First, we check for any loops, these would be emails sent to self. And if so, we can simplify the graph to remove these (and also any eventual multiple edge). 
 
 ```{r}
 paste0("The number of recursive (self-directed) emails in the network is: ", 
@@ -65,30 +74,33 @@ paste0("The number of recursive (self-directed) emails in the network is: ",
 
 # we see that one exists, so we simplify the graph to remove it. 
 graph <- simplify(graph)
+
 # check our graph is setup properly
 is_igraph(graph)
 ```
 
-Next, calculate basic descriptive statistics of the plot
+Next, calculate basic descriptive statistics of the plot:
+
 ```{r}
 paste0("There are ", vcount(graph), " nodes and ", ecount(graph), " edges in our Spanish email network")
 
+# check if our graph is fully connected
+is_connected(graph)
+
+#degree
 degree_all <- degree(graph, mode="all")
 degree_out <- degree(graph, mode="out")
-
 paste0("The average degree is: ", round(mean(degree(graph)), 2), " when we DO NOT consider the direction of the emails.")
-
 paste0("The average degree is: ", round(sum(degree_out)/vcount(graph), 2), " when we DO consider the emails to be directed outward from the node (sender) to a recipient")
 
 # most connected node:
 paste0("The most connected node is number ", which.max(degree(graph))[1], " which has ", max(degree(graph)), " links.")
-
 ```
-For the purposes of this homework, we are not factoring in this directional property of the graph. We are considering that the emails are indicating a social relationship between the two nodes (sender and receiver) and it is irrelevant who sent the email. This means the average interactions for each individual node is 19.24 (which would represent email interactions 19.24 different people on average)
+For the purposes of this homework, we are not factoring in this directional property of the graph. We are considering that the emails are indicating a social relationship between the two nodes (sender and receiver) and it is irrelevant who sent the email. This means the average interactions for each individual node is 19.24 (which would represent email interactions with 19.24 different people on average)
 
 Now check the degree distribution
 
-```{r}
+```{r, fig.width=8}
 # set average node for label 
 avg_deg <- round(mean(degree(graph)),2)
 
@@ -101,64 +113,69 @@ ggplot() +
        x = "Degrees",
        y = "Number of nodes") +
   theme(axis.title.y = element_text(angle = 90))
-
 ```
 
-We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with it's 142 links. This is far more than the second most connected
+We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with its 142 links. This is far more than the second most connected
 
-Plot the network to see if any trends are visible
--- FYI Yijia and Diego, just adding these in but probably not useful
+Visualization of the network:
 
-```{r}
+```{r, fig.width=8}
 # plot the network overall, see if any large clusters emerge. Use the curved lines as it looks nice to represent emails. 
 # set colour and size only for the top 50 nodes
 top_50_nodes <- order(degree_all, decreasing = TRUE)[1:50]
 V(graph)$color <- "grey3"
-V(graph)[top_50_nodes]$color <- "red3"
-V(graph)$size <- 0.5  
-V(graph)[top_50_nodes]$size <- 0.7
+V(graph)[top_50_nodes]$color <- "red"
+V(graph)$size <- 0.75
+V(graph)[top_50_nodes]$size <- 2
 
 # plot the full network
-ggraph(graph, layout = "lgl") +
-  geom_edge_arc(aes(alpha = 0.5), color = "gray70") +  
-  geom_node_point(aes(size = V(graph)$size), 
-                  color = V(graph)$color) +  
+ggraph(graph, layout = "kk") +
+  geom_edge_link(width = 0.1, alpha = 0.5, color = "grey") +  
+  geom_node_point(color = V(graph)$color, size = V(graph)$size) +  
   theme_void() +  
-  ggtitle("Visualisation of full network, 50 most connected nodes highlighted")+
+  ggtitle("Visualisation of the network, 50 most connected nodes highlighted")+
   theme(legend.position = "none")
-
 ```
 
-We see that the most connected nodes are all centred in the graph. On the outside, we can see the plots with only a couple of connections. This is consistent with the power-law distribution. 
+We see that the most connected nodes are all centered in the graph. On the outside, we can see the nodes with only a couple of connections.
 
 
-# Questions
+## Steps
 
-## 1) Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
+### 1) Delete a fraction of real edges in the network and create a table of those links deleted (positive class) and of links non-present (negative class)
+
+First we'll create the positive class: existing edges that are removed from the network.
 
 ```{r}
 # Set seed for reproducibility
 set.seed(123)
 
-# Randomly delete some real edges: set as positive class
+# Randomly delete some real edges
 edge_list <- as_data_frame(graph, what = "edges")
 n_edges <- nrow(edge_list)
-n_remove <- floor(0.1 * n_edges) #We will delete 10% of the real edges
+n_remove <- floor(0.1 * n_edges) # We will delete 10% of the real edges
 removed_edges <- edge_list[sample(1:n_edges, n_remove), ]
-graph_modified <- delete_edges(graph, E(graph)[from = removed_edges$from, to = removed_edges$to])
+# Formatting appropriately the edges to pass them as argument to delete_edges
+edge_strings <- paste(removed_edges$from, removed_edges$to, sep = "|")
+graph_modified <- delete_edges(graph, edges = edge_strings)
 
 # Label the deleted real edges as positive class (1)
 positive_edges <- removed_edges %>%
   mutate(label = 1)
 ```
 
+We'll now focus on the negative class: edges that do not exist in the network.
+
+We will be selecting false edges (non-existent links) only among high-degree nodes. This is done in order to select false edges that could at least be plausible and thus help us more in the training process. Low degree nodes would be unlikely to form an edge any way and so using those non-existent edges between low degree nodes would not add any information in our model.
+
 ```{r}
-# Create a new data frame to register the negative class (made-up links)
+# Create a new data frame to register the negative class (non-existent links)
 false_edges <- data.frame()
-# Filter the most connected nodes to create non-existent links 
-#that are less obviously disconnected, which is better for machine learning
-most_connected <- which(degree(graph)>5)
-# Set seed again just in case
+
+# Filter for more connected nodes
+most_connected <- which(degree(graph)>15)
+# We choose 15 arbitrarily (a number slightly below our average degree)
+
 set.seed(123)
 
 # Create a loop for creating made-up links, registering all in `false_edges`
@@ -170,18 +187,16 @@ while (nrow(false_edges) < n_remove) {
   if (node1 == node2) next
   
   # Check if two nodes are connected, if not, create a negative link for them
-  if (!are.connected(graph, node1, node2)) {
+  if (!are_adjacent(graph, node1, node2)) {
     edge_row <- data.frame(from = as_ids(V(graph)[node1]), 
                            to = as_ids(V(graph)[node2]),
                            label = 0)
-    
-    # avoid adding same links
+    # Function to check to avoid adding same link
     if (!any(apply(false_edges, 1, function(row) all(row == edge_row)))) {
       false_edges <- rbind(false_edges, edge_row)
     }
   }
 }
-
 ```
 
 ```{r}
@@ -198,18 +213,11 @@ head(all_edges)
 table(all_edges$label)
 ```
 
-## 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
+### 2) Generate a number of proximity/similarty metrics heuristics for each link in the positive and negative class
+
+We'll create a function to compute different proximity/similarity metrics heuristics to be used as features in the prediction model later.
 
 ```{r}
-# Make sure the IDs are in numeric format, aligning with igraph
-all_edges <- all_edges %>%
-  mutate(from = as.numeric(from),
-         to = as.numeric(to))
-```
-
-```{r}
-# Create a function to compute different proximity/similarity metrics heuristics
-# as additional features for later prediction models
 compute_heuristics <- function(graph, edge_df) {
   edge_df <- edge_df %>%
     mutate(
@@ -236,87 +244,102 @@ compute_heuristics <- function(graph, edge_df) {
         sum(1 / log(degrees))
       }),
       
-      # Calculate preferential attachment by multiplay the degrees
+      # Calculate preferential attachment by multiplying the degrees
       pref_attachment = map2_dbl(from, to, ~ 
         degree(graph, .x, mode = "all") * degree(graph, .y, mode = "all")),
-
-      # Calculate the distances by using the distances function
-      shortest_path = map2_dbl(from, to, ~ 
-        distances(graph, v = .x, to = .y, mode = "all"))
     )
   return(edge_df)
 }
-
 ```
 
+We'll now apply the created function and compute all proximity/similarity metrics heuristics that we learned in class on our dataset.
+
 ```{r}
-# Apply the created function and compute all proximity/similarity metrics heuristics
-# that we learned in class
 all_edges_with_heuristics <- compute_heuristics(graph, all_edges)
 head(all_edges_with_heuristics)
 ```
 
-## 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
+### 3) Train a binary classifier to predict the links, i.e., to predict the class (positive/negative) using those heuristics. Use crossvalidation.
+
+First we split in test and training datasets:
 
 ```{r}
 # Create training (80%) and test set (20%)
-set.seed(123)  # Set the seed for reproducibility
+set.seed(123) 
 train_indices <- sample(1:nrow(all_edges_with_heuristics), size = 0.8 * nrow(all_edges_with_heuristics))
 train_edges <- all_edges_with_heuristics[train_indices, ]
 test_edges <- all_edges_with_heuristics[-train_indices, ]
-```
 
-```{r}
 # Convert the labels into factors, for the logit model
 train_edges$label <- as.factor(train_edges$label)
 ```
 
+We'll now build a logit model (binomial family from `glm` package) to predict if a link exists (1) or not (0) using the different proximity/similarity metrics heuristics created previously as features in the model.
 
 ```{r}
-# Build logit model using binomial family from glm to predict if a link exists (1) or not (0)
-# Using different proximity/similarity metrics heuristics created previously as features in the glm
 # Use cross validation to test the performance
+set.seed(123)
 train_control <- trainControl(method = "cv", number = 10)
-model_cv <- train(label ~ common_neighbors + jaccard + adamic_adar + pref_attachment + shortest_path,
-                  data = train_edges, method = "glm", family = binomial, trControl = train_control)
+model_cv <- train(label ~ common_neighbors + jaccard + adamic_adar + pref_attachment,
+                  data = train_edges, 
+                  method = "glm", family = binomial, 
+                  trControl = train_control,
+                  metric = "Accuracy")
+```
+
+Finally we predict the test set. 
+
+```{r}
+# Predict the testing set
+predictions <- predict(model_cv, newdata = test_edges, type = "prob")
+# Probabilities of belonging to a class or the other
+head(predictions)
+```
+
+
+### 4) Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
+
+Let's first look at the summary of the model.
+
+```{r}
 summary(model_cv)
 ```
 
-We received a warning saying that "glm.fit algorithm did not converge", and the p value for all coefficients are close to 1, meaning that this model has very much room for improvement.
+The most significant heuristic is Jaccard, followed by Adamic-Adar ad then common neighbors. Preferential attachment is non significant. 
 
-Firstly, we will check if there is the problem of multi-collinearity, and see if the number of positive and negative labels is balanced.
-
-```{r}
-cor(train_edges[, c("common_neighbors", "jaccard", "adamic_adar", "pref_attachment", "shortest_path")])
-table(train_edges$label)
-```
-
-We can see that there are 861 negative labels and 883 positive labels, which is pretty balanced. However, we can see the correlation between `common_neighbors` and `adamic_adar` is extremely high (0.99), indicating redundancy. `common_neighbors` and `jaccard` are also strongly correlated (0.82), while `shortest_path` shows low correlation with others, suggesting it's more independent. We will try to drop highly correlated features (`common_neighbors`) to mitigate multicollinearity.
+Looking at the magnitude of the coefficients could give us an hint on which of the heuristic is the most important. However, we must take into account that the heuristic measure do not use the same scale, so we will be running another model in which we standardize the features of the model
 
 ```{r}
+set.seed(123)
 train_control <- trainControl(method = "cv", number = 10)
-model_cv <- train(label ~ jaccard + pref_attachment + shortest_path,
-                  data = train_edges, method = "glm", family = binomial, trControl = train_control)
+model_cv <- train(label ~ common_neighbors + jaccard + adamic_adar + pref_attachment,
+                  data = train_edges, 
+                  method = "glm", family = binomial, 
+                  trControl = train_control,
+                  # apply standardization
+                  preProcess = c("center", "scale"), 
+                  metric = "Accuracy")
 summary(model_cv)
 ```
 
+Jaccard is still the most significant, however the heuristic with the biggest coefficient is Adamic-Adar. 
 
+Adamic-Adar is a score that takes into account common neighbors of two nodes, but it also takes into account the degree of the common neighbors. This means that it gives more weight to common neighbors with lower degrees, which is interpreted as a good indicator of the likelihood of a link forming. On the opposite the Jaccard's coefficient does not do that, as it only calculates the proportion of neighbors in common, nor does it do it the common neighbors which simply counts the common neighbors. This particular feature of Adamic-Adar which discounts whether common neighbors have low or high degree is probably what makes it the most important heuristic in our model. Furthermore it is possible that given the power-law like degree distribution of our network this feature is potentially even more important. Many people are probably connected to the hubs of the network (which we can interpret as faculty or administrative people from the university), but if two people share connection with those hubs (ex. a professor that teaches many courses), it is not a good proxy that they are connected to each other. On the other hand if two people are connected to many common neighbors that are not hub (ex. students), it is likely that they might be in the same course and thus this is a good proxy that they are connected to each other.
 
-
-## 4) Evaluate the precision of the model. Which heuristic is the most important. Why do you think it is the most important?
-
-```{r}
-
-```
-
-## 5) Comment on potential ways to improve the link prediction
+We'll now evaluate the model performance:
 
 ```{r}
-
+# Confusion matrix
+confusion_matrix <- confusionMatrix(as.factor(ifelse(predictions[, 2] > 0.5, 1, 0)), 
+                                     as.factor(test_edges$label), positive = "1")
+confusion_matrix
 ```
 
+Overall accuracy is 78%, specificity is higher (89%), while sensitivity is lower (67%). This means, as can be seen from the confusion matrix, that the model is better at identifying negative links (those that never existed), than positive links (those that were actually present). The model often labels as non-existent link, links that actually were there.
 
-	**1. Accessing additional information**
+### 5) Comment on potential ways to improve the link prediction
+
+**1. Accessing additional information**
 		a. Being able to make the predictions based on information would improve the model greatly. For example, within the university, if we had information such as faculty and classes, we could greatly improve the predictive power in the model. However, because our model is 
 
 Potential solution:
@@ -329,18 +352,10 @@ Potential solution:
 ~~ I'm actually not sure right now how the heuristics work, and whether there is a way to actually read in additional information when making predictions
 
 	**2. Overcoming the class imbalance problem**
-
 Prediction is always difficult with class imbalance in a dataset. In this example we do have quite extreme class imbalance. 
-
 The model is trying to predict individual links. However, the average node has 19.24 links, while there are 1,133 nodes. If the nodes were randomly assigned, that would mean there is a 1.70% chance that two nodes are connected together randomly. When we take random samples, the predictive model will nearly always go with the majority class, because it has a 98.3% chance of being correct. When we look at the number of true link predictions that each model made, we see it is very small. 
-
 If the model predicts no link for all observations, it would be correct 98.3% of the time which is good odds. So the important prediction variable for us is the true positive estimations. 
-
 Taking the samples is a very good way to try balance the data. But the chances of a true link are so low in a power-law network with an average degree this low. 
-
 Solution: Again, additional information would probably critical. To try and improve the predictions, creating smaller neighbourhoods and ego graphs, then making predictions in smaller related graphs is the best option. Within these graphs, the average degree relative to the number of nodes would increase and we would see higher predictive models. 
-
-
 ~~~ IF we want to test this, could do a sample neighbourhood that is centred around a certain cluster or a well connected node. 
-
 
