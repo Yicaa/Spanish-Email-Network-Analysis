@@ -314,3 +314,33 @@ summary(model_cv)
 ```{r}
 
 ```
+
+
+	**1. Accessing additional information**
+		a. Being able to make the predictions based on information would improve the model greatly. For example, within the university, if we had information such as faculty and classes, we could greatly improve the predictive power in the model. However, because our model is 
+
+Potential solution:
+
+	• Without any of this information, unsupervised learning is the only option to generate new information. Using clustering is the only viable option to create more information to help improve the predictive models. 
+		○ If we create a cluster variable and label each node with it's cluster, it could help improve the link prediction power. 
+		○ This is a way to artificially create more information. The challenge is that we won't be able to know how the clusters have been identified within R. 
+
+~~~ Should we try insert code to add clustering variables to improve prediction??
+~~ I'm actually not sure right now how the heuristics work, and whether there is a way to actually read in additional information when making predictions
+
+	**2. Overcoming the class imbalance problem**
+
+Prediction is always difficult with class imbalance in a dataset. In this example we do have quite extreme class imbalance. 
+
+The model is trying to predict individual links. However, the average node has 19.24 links, while there are 1,133 nodes. If the nodes were randomly assigned, that would mean there is a 1.70% chance that two nodes are connected together randomly. When we take random samples, the predictive model will nearly always go with the majority class, because it has a 98.3% chance of being correct. When we look at the number of true link predictions that each model made, we see it is very small. 
+
+If the model predicts no link for all observations, it would be correct 98.3% of the time which is good odds. So the important prediction variable for us is the true positive estimations. 
+
+Taking the samples is a very good way to try balance the data. But the chances of a true link are so low in a power-law network with an average degree this low. 
+
+Solution: Again, additional information would probably critical. To try and improve the predictions, creating smaller neighbourhoods and ego graphs, then making predictions in smaller related graphs is the best option. Within these graphs, the average degree relative to the number of nodes would increase and we would see higher predictive models. 
+
+
+~~~ IF we want to test this, could do a sample neighbourhood that is centred around a certain cluster or a well connected node. 
+
+
