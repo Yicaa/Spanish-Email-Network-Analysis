@@ -9,7 +9,6 @@ output:
     toc: yes
     toc_float: true
     toc_depth: 3
-
 ---
 
 ```{r,include=F}
@@ -100,9 +99,10 @@ paste0("The average degree is: ", round(sum(degree_out)/vcount(graph), 2), " whe
 # most connected node:
 paste0("The most connected node is number ", which.max(degree(graph))[1], " which has ", max(degree(graph)), " links.")
 ```
-For the purposes of this homework, we are not factoring in this directional property of the graph. We are considering that the emails are indicating a social relationship between the two nodes (sender and receiver) and it is irrelevant who sent the email. This means the average interactions for each individual node is 19.24 (which would represent email interactions with 19.24 different people on average)
 
-Now check the degree distribution
+For the purposes of this homework, we are not factoring in this directional property of the graph. We are considering that the emails are indicating a social relationship between the two nodes (sender and receiver) and it is irrelevant who sent the email. This means the average interactions for each individual node is 19.24 (which would represent email interactions with 19.24 different people on average).
+
+Now check the degree distribution;
 
 ```{r, fig.width=8}
 # set average node for label 
@@ -119,12 +119,11 @@ ggplot() +
   theme(axis.title.y = element_text(angle = 90))
 ```
 
-We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with its 142 links. This is far more than the second most connected
+We see the common power law distribution. There are few very connected nodes and many less connected nodes. We see that the max node must be node number 105 we reported earlier, with its 142 links. This is far more than the second most connected.
 
 Visualization of the network:
 
 ```{r, fig.width=8}
-# plot the network overall, see if any large clusters emerge. 
 # set colour and size only for the top 50 nodes
 top_50_nodes <- order(degree_all, decreasing = TRUE)[1:50]
 V(graph)$color <- "grey3"
@@ -257,6 +256,7 @@ compute_heuristics <- function(graph, edge_df) {
       # Calculate preferential attachment by multiplying the degrees
       pref_attachment = map2_dbl(from, to, ~ 
         degree(graph, .x, mode = "all") * degree(graph, .y, mode = "all")),
+      
     )
   return(edge_df)
 }
@@ -265,16 +265,22 @@ compute_heuristics <- function(graph, edge_df) {
 We'll now apply the created function and compute all proximity/similarity metrics heuristics that we learned in class on our dataset.
 
 ```{r}
-all_edges_with_heuristics <- compute_heuristics(graph, all_edges)
+all_edges_with_heuristics <- compute_heuristics(graph_modified, all_edges)
 # view the true edges
-head(all_edges_with_heuristics)
+all_edges_with_heuristics |> filter(label == 1) |> head()
 # view the fake edges
 all_edges_with_heuristics |> filter(label == 0) |> head()
+
+all_edges_with_heuristics |>
+  summarise(across(c(common_neighbors, jaccard, adamic_adar, 
+                     pref_attachment), 
+                   mean, .names = "mean_{.col}"), 
+            .by = label)
 ```
 
-We see that the in the real edges, each model has heuristics > 0 where common neighbours exist. For the shortest path value, each are equal to 1 as the links are real so the shortest path is the direct connection.
+We see that the in the real edges, the average of each heuristic tends to be higher than for the fake edges. This is expected as the heuristics are designed to measure the likelihood of a link existing between two nodes and a higher score for them represents nodes which are more likely to be proximate.
 
-With the fake edges, we see that as the selection is random, most do not have common neighbours, so their heuristic measures are mostly zero, but the shortest path is more useful here to observe how many degrees of separation they have. However, we cannot include shortest distance in the modelling because there is no variation in the true connections (all values = 1).
+We tried to use also the shortest path (distance) between two nodes as a feature in our model, however this heuristic cannot be used because it can take infinite values in the case that one of the removed edges causes part of the graph to disconnect.
 
 ### 3) Predict the links using CV
 
@@ -326,7 +332,7 @@ Let's first look at the summary of the model.
 summary(model_cv)
 ```
 
-The most significant heuristic is Jaccard (in terms of lowest p-value), followed by Adamic-Adar ad then common neighbors. Preferential attachment is non significant. 
+The most significant heuristic is Adamic-Adar (in terms of lowest p-value), followed by Jaccard and then preferential attachment and common neighbors. 
 
 Looking at the magnitude of the coefficients could give us an hint on which of the heuristic is the most important. However, we must take into account that the heuristic measure do not use the same scale, so we will be running another model in which we standardize the features of the model
 
@@ -343,13 +349,21 @@ model_cv <- train(label ~ common_neighbors + jaccard + adamic_adar + pref_attach
 summary(model_cv)
 ```
 
-Jaccard is still the most significant, however the heuristic with the biggest coefficient is Adamic-Adar. 
+Adamic-Adar in addition to being the most significant, is also the heuristic with the biggest coefficient. 
 
 Adamic-Adar is a score that takes into account common neighbors of two nodes, but it also takes into account the degree of the common neighbors. This means that it gives more weight to common neighbors with lower degrees, which is interpreted as a good indicator of the likelihood of a link forming. On the opposite the Jaccard's coefficient does not do that, as it only calculates the proportion of neighbors in common, nor does it do it the common neighbors which simply counts the common neighbors. This particular feature of Adamic-Adar which discounts whether common neighbors have low or high degree is probably what makes it the most important heuristic in our model. 
 
 Furthermore it is possible that given the power-law like degree distribution of our network this feature is potentially even more important. Many people are probably connected to the hubs of the network (which we can interpret as faculty or administrative people from the university), but if two people share connection with those hubs (ex. a professor that teaches many courses), it is not a good proxy that they are connected to each other. On the other hand if two people are connected to many common neighbors that are not hub (ex. students), it is likely that they might be in the same course and thus this is a good proxy that they are connected to each other.
 
 Overall, we determine that Adamic-Adar is the most important heuristic because it weights less common relationships, which matches the real world experience we would see in a university sample.  
+
+The negative coefficients of the common neighbors heuristic and preferential attachment (which tries to capture the fact that nodes with higher degree are more likely to receive new connections), are of difficult interpretation as we would expect those coefficients to be positive as well. One possible explanation is multicollinearity. We are going to check if our heuristics are very correlated to each other:
+
+```{r}
+cor(train_edges[, c("common_neighbors", "jaccard", "adamic_adar", "pref_attachment")])
+```
+
+We can see the correlation between `common_neighbors` and `adamic_adar` is extremely high (0.99), indicating. `common_neighbors` and `jaccard` are also strongly correlated (0.82). Also `adamic_adar` and `jaccard` share a very high correlation (0.84). `shortest_path` is the only one that shows low correlation with others. These extremely high values of correlation make coefficient interpretation difficult at all levels, undermining our previous strategy to identify the most important heuristic. Nonetheless, our theoretical explanation of why Adamic-Adar is the most important heuristic still holds.  
 
 We'll now evaluate the model performance:
 
@@ -373,23 +387,91 @@ The best way to improve model prediction is by including additional information 
 _Improved node information_ could include details on the type of university person they are. For example, are they a student or a professor or administrative staff. For students and professors, information on the faculty and subjects they take. Some sociodemographic information could help but it is less useful than university information. 
 
 _Edge information_ could also improve prediction. For example, the number of emails sent between the individuals to indicate strength of the relationship. The number of emails could then be included as a weight in the edge when doing the prediction models. 
-Temporal information would also be very helpful i.e. the time each email was sent. This would help to relate individuals who were at the university at the same time. this is useful because many students then could be enrolled in the same course but it could be 10-15 years apart so they would never actually cross over. 
 
 One potential solution to improve the prediction with no information is to perform _unsupervised learning to generate clusters_ (aka communities for network analysis). With no targets, we can try to identify different neighbourhoods and assign values from the clustering. With the very basic information available, this is the only option to manually add on new columns of potentially identifiable data. The major limitation with this is that we wouldn't be able to understand why the clusters have formed and whether they are logical. 
 
 
 **2. Try make more localised predictions**
 
-Prediction is always difficult with class imbalance in a dataset. In this email network we do have quite extreme class imbalance overall. Oversampling of the true linkages is a basic way the prediction of positive cases could be improved. 
+Prediction is always difficult with class imbalance in a dataset. In any network we do have quite extreme class imbalance overall. Oversampling of the true linkages is a basic way the prediction of positive cases can be improved. 
 
-The model is trying to predict individual links. However, the average node has a degree of 19.24 links, while there are 1,133 nodes. That means only 1.7% of all possible edges exist. If the nodes were randomly assigned, that would mean there is a 1.70% chance that two nodes are connected together.
+The model is trying to predict individual links. However, the average node has a degree of 19.24 links, while there are 1,133 nodes. That means only 1.7% of all possible edges exist. If the nodes were randomly assigned, that would mean there is a 1.7% chance that two nodes are connected together.
 
-When we take random samples of the missing nodes, if you were trying to predict the entire graph, the predictive model would just predict 0 links. And it would have 98.3% accuracy because that is the majority class. This highlights why the So the important prediction variable for us is the true positive estimations. We don't see this in our predictions because we have taken a balanced sample of true and false links. However, one potential solution to this would be doing more localised predictions. Hypothetically, if we produced clusters/communities, and we treated each cluster as an ego graph, then made predictions within each of the clusters, the average degree relative to the number of nodes would increase and we would expect to see better predictive models locally. 
+When we take random samples of the missing nodes, if we were trying to predict the entire graph, the predictive model would just predict 0 links. And it would have 98.3% accuracy because that is the majority class. This highlights why the important prediction variable for us is the true positive estimations. 
+
+We solved this in our predictions because we have taken a balanced sample of true and false links. However, one potential further improvement to this would be doing more localised predictions. Hypothetically, if we produced clusters/communities, and we treated each cluster as an ego graph, then making predictions within each of the clusters, the average degree relative to the number of nodes would increase and we would expect to see better predictive models locally. 
 
 
 **3. Try further ML model optimisation with the heuristics**
 
-A more complex model could include each of the heurisitcs weighted by their influence. This would likely be a smaller improvement, but optimising the heuristics and testing different combinations could optimise the model. The other options are using a prediction score using ensemble methods (e.g., averaging all significant heurisitcs into one composite score) or weighted linear models where coefficients reflect feature importance.
-In a more basic change, the threshold for where a link is identified could be altered to find the optimal point on the ROC curve to find the best threshold. 
+A more complex model could include using some regularization (Lasso/Ridge penalities) to tackle multicollinearity. This would likely be a smaller improvement, but optimising the heuristics and testing different combinations could optimise the model. 
 
+Calculating even more complex heuristic could also help in adding useful information which could improve predictions. 
 
+In a more basic change, the threshold for where a link is identified could be altered to find the optimal point on the ROC curve to find the best threshold and the best balance between sensitivity and specificity. 
+
+Potentially also sampling fake edges between nodes with even higher degree (>15 which was our threshold) could help. This could especially be useful, in light of the fact that our model struggles more in identifying positive (existing links). Therefore adding more information on even more plausible links (between nodes with degree substantially higher than average) could help the model better differentiate and identify actual links from non-exisiting links.
+
+We'll try to do this below, where all our pipeline is copied and pasted, only changing the threshold to sample fake edges.
+
+```{r}
+false_edges <- data.frame()
+
+# We now choose 30 doubling from the previous threshold which was 15
+most_connected <- which(degree(graph)>30)
+
+set.seed(123)
+while (nrow(false_edges) < n_remove) {
+  node1 <- sample(most_connected, 1)
+  node2 <- sample(most_connected, 1)
+  
+  # avoid self-connecting
+  if (node1 == node2) next
+  
+  # Check if two nodes are connected, if not, create a negative link for them
+  if (!are_adjacent(graph, node1, node2)) {
+    edge_row <- data.frame(from = as_ids(V(graph)[node1]), 
+                           to = as_ids(V(graph)[node2]),
+                           label = 0)
+    # Function to check to avoid adding same link
+    if (!any(apply(false_edges, 1, function(row) all(row == edge_row)))) {
+      false_edges <- rbind(false_edges, edge_row)
+    }
+  }
+}
+
+positive_edges <- positive_edges %>%
+  mutate(from = as.numeric(from), to = as.numeric(to))
+false_edges <- false_edges %>%
+  mutate(from = as.numeric(from), to = as.numeric(to))
+all_edges <- bind_rows(positive_edges, false_edges)
+
+all_edges_with_heuristics <- compute_heuristics(graph_modified, all_edges)
+
+set.seed(123) 
+train_indices <- sample(1:nrow(all_edges_with_heuristics), size = 0.8 * nrow(all_edges_with_heuristics))
+train_edges <- all_edges_with_heuristics[train_indices, ]
+test_edges <- all_edges_with_heuristics[-train_indices, ]
+
+train_edges$label <- as.factor(train_edges$label)
+
+set.seed(123)
+train_control <- trainControl(method = "cv", number = 10)
+model_cv <- train(label ~ common_neighbors + jaccard + adamic_adar + pref_attachment,
+                  data = train_edges, 
+                  method = "glm", 
+                  family = binomial, 
+                  trControl = train_control,
+                  metric = "Accuracy")
+summary(model_cv)
+
+predictions <- predict(model_cv, newdata = test_edges, type = "prob")
+
+confusion_matrix <- confusionMatrix(as.factor(ifelse(predictions[, 2] > 0.5, 1, 0)), 
+                                     as.factor(test_edges$label), positive = "1")
+confusion_matrix
+```
+
+It seems that this has indeed helped our predictions as accuracy has increased, but most importantly we were able to achieve a higher sensitivity. This could just be out of luck of sampling meaningful non-existent links of course, but nonetheless our results seem robust. 
+
+It is also interesting to see how the model changes, it seems that preferential attachment plays now a bigger role at the expense of Jaccard and common neighbors. In light of this we can also probably understand better its negative coefficient: given that we sample fake edges from high degree nodes, the preferential attachment of the fake links is likely to be high and thus the model could interpret a high preferential attachment as higher probability of that edge being fake. This goes against the theoretical concept that preferential attachment was developed to capture, but nevertheless it seems that it is helping our predictions.
